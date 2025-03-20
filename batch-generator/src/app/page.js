@@ -52,6 +52,7 @@ export default function Home() {
             });
             
             setScripts(generationRes.data.scripts);
+            console.log('生成结果:', generationRes.data);
             setIsCompiling(false);
             
         } catch (error) {

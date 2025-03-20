@@ -33,7 +33,7 @@ export default function ExecuteProcess({
                   key={index}
                   className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
                 >
-                  {topic}
+                  {typeof topic === 'object' ? topic.标签 : topic}
                 </span>
               ))}
             </div>

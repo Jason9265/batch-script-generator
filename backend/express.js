@@ -116,11 +116,13 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
     if (!jsonMatch) {
       throw new Error('AI响应格式错误');
     }
-    const topics = JSON.parse(jsonMatch[0]);
+    const topics = JSON.parse(jsonMatch[0]).map(item => 
+      typeof item === 'string' ? item : item.标签
+    );
 
     res.json({ 
       status: 'success',
-      topics: topics.slice(0, 10) // 返回前10个话题
+      topics: topics.slice(0, 10)
     });
 
   } catch (error) {
