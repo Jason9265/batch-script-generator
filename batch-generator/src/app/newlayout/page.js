@@ -8,6 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { UploadCloud, Download, Info, AlertCircle, Play, Square } from 'lucide-react';
 
+const API_BASE_URL = 'http://localhost:3000';
+const apiClient = axios.create({
+  baseURL: API_BASE_URL
+});
+
 export default function Home() {
     const [prompt, setPrompt] = useState('');
     const [audience, setAudience] = useState('');
@@ -15,9 +20,6 @@ export default function Home() {
     const [model, setModel] = useState('gemini');
     const [loading, setLoading] = useState(false);
     const [file, setFile] = useState(null);
-    const [analysisResult, setAnalysisResult] = useState(null);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [isCompiling, setIsCompiling] = useState(false);
     const [logs, setLogs] = useState([]);
     const [fileName, setFileName] = useState('');
 
@@ -44,48 +46,44 @@ export default function Home() {
         }
 
         setLoading(true);
-        setLogs([]);
+        // setLogs([]);
         
         try {
-            // First analysis step
-            setIsAnalyzing(true);
             addLog('INFO', '正在初始化分析环境...');
-            addLog('INFO', `加载信息: 内存分配 memory=1.21.0`);
+            addLog('INFO', `加载信息: 使用模型 ${model}`);
             
             const formData = new FormData();
             formData.append('file', file);
             
-            addLog('WARNING', '内存使用率达到 75%');
             addLog('INFO', `开始执行 ${fileName}`);
             
-            const analysisRes = await axios.post('http://localhost:3000/api/analyze', formData, {
+            const analysisRes = await apiClient.post('/api/analyze', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             
-            setAnalysisResult(analysisRes.data);
-            setIsAnalyzing(false);
+            console.log(analysisRes.data);
+            // 添加分析结果到日志
+            addLog('INFO', `分析完成 - 检测到 ${analysisRes.data.topics?.length || 0} 个主题`);
+            addLog('INFO', `主要关键词: ${analysisRes.data.topics?.join(', ') || '无'}`);
+            addLog('INFO', `正在生成剧本...`);
             
             // Second generation step
-            setIsCompiling(true);
-            const generationRes = await axios.post('http://localhost:3000/api/generate', {
+            const generationRes = await apiClient.post('/api/generate', {
                 topics: analysisRes.data.topics,
                 model,
                 audience
             });
             
+            console.log('生成信息: ', generationRes.data);
             setScripts(generationRes.data.scripts);
-            console.log('生成结果:', generationRes.data);
             
-            addLog('INFO', '生成完成');
-            setIsCompiling(false);
+            addLog('INFO', '剧本生成完成');
             
         } catch (error) {
             console.error('处理失败:', error);
             addLog('ERROR', `行号 127: ${error.message || '处理过程中发生错误'}`);
         } finally {
             setLoading(false);
-            setIsAnalyzing(false);
-            setIsCompiling(false);
         }
     };
 
@@ -114,14 +112,14 @@ export default function Home() {
 
             <div className="container mx-auto p-4 space-y-6">
                 {/* 文件上传区域 */}
-                <div className="bg-white rounded-lg p-6">
-                    <h2 className="text-lg font-medium mb-4">文件上传</h2>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                <div className="bg-white rounded-lg p-4">
+                    <h2 className="text-lg font-medium mb-3">文件上传</h2>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                         <div className="flex flex-col items-center justify-center">
-                            <UploadCloud className="h-12 w-12 text-gray-400 mb-3" />
+                            <UploadCloud className="h-8 w-8 text-gray-400 mb-2" />
                             <p className="text-sm text-gray-500 mb-2">将文件拖放到此处，或</p>
                             <div>
-                                <label htmlFor="file-upload" className="bg-blue-500 text-white px-4 py-2 rounded-md cursor-pointer hover:bg-blue-600">
+                                <label htmlFor="file-upload" className="bg-blue-500 text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-blue-600 text-sm">
                                     选择文件
                                 </label>
                                 <input 
@@ -132,9 +130,9 @@ export default function Home() {
                                     className="hidden" 
                                 />
                             </div>
-                            <p className="text-xs text-gray-500 mt-3">支持的文件格式: .csv, .xls</p>
+                            <p className="text-xs text-gray-500 mt-2">支持的文件格式: .csv, .xls</p>
                             {fileName && (
-                                <p className="text-sm text-green-600 mt-2">已选择: {fileName}</p>
+                                <p className="text-sm text-green-600 mt-1">已选择: {fileName}</p>
                             )}
                         </div>
                     </div>
@@ -148,8 +146,9 @@ export default function Home() {
                                     <SelectValue placeholder="选择模型" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="gemini">Google Gemini</SelectItem>
-                                    <SelectItem value="gpt">ChatGPT</SelectItem>
+                                    <SelectItem value="gemini">Google Gemini 2.0</SelectItem>
+                                    <SelectItem value="chatgpt">ChatGPT</SelectItem>
+                                    <SelectItem value="deepseek-r1">DeepSeek-R1</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -198,26 +197,13 @@ export default function Home() {
                         </div>
                         <div className="p-4 bg-black text-green-400 font-mono text-sm h-[300px] overflow-y-auto">
                             {logs.map((log, index) => (
-                                <div key={index} className={`mb-1 ${log.type === 'ERROR' ? 'text-red-400' : log.type === 'WARNING' ? 'text-yellow-400' : 'text-green-400'}`}>
+                                <div key={index} className={`mb-1 ${log.type === 'ERROR' ? 'text-red-400' : log.type === 'DATA' ? 'text-gray-300 whitespace-pre-wrap' : 'text-green-400'}`}>
                                     [{log.type}] {log.timestamp} {log.message}
                                 </div>
                             ))}
                             {logs.length === 0 && !loading && (
-                                <div className="text-gray-500">准备处理用户输入...</div>
+                                <div className="text-gray-500">等待用户输入...</div>
                             )}
-                        </div>
-                        <div className="p-2 border-t flex justify-between items-center">
-                            <div className="flex space-x-2">
-                                <button className="text-gray-500">
-                                    <Info className="h-5 w-5" />
-                                </button>
-                                <button className="text-gray-500">
-                                    <AlertCircle className="h-5 w-5" />
-                                </button>
-                            </div>
-                            <Button variant="ghost" size="sm">
-                                <Download className="h-4 w-4 mr-1" /> 导出日志
-                            </Button>
                         </div>
                     </div>
 
@@ -236,8 +222,7 @@ export default function Home() {
                                         <TableHead className="w-[50px]">序号</TableHead>
                                         <TableHead>文件名</TableHead>
                                         <TableHead>状态</TableHead>
-                                        <TableHead>开始时间</TableHead>
-                                        <TableHead>结束时间</TableHead>
+                                        <TableHead>生成时间</TableHead>
                                         <TableHead className="w-[50px]">操作</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -250,7 +235,6 @@ export default function Home() {
                                                 <TableCell>
                                                     <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">成功</span>
                                                 </TableCell>
-                                                <TableCell>{new Date().toLocaleString()}</TableCell>
                                                 <TableCell>{new Date().toLocaleString()}</TableCell>
                                                 <TableCell>
                                                     <button className="text-blue-500">

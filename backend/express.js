@@ -11,6 +11,9 @@ const port = 3000;
 
 const count = 3;
 
+const OPENAI_API_KEY = '';
+const GEMINI_API_KEY = 'AIzaSyCL0hgJ6ppzgPrI7Xm9Q0f8GmLP3XZl59k';
+
 // 配置 Multer
 const upload = multer({
   storage: multer.memoryStorage(), // 使用内存存储
@@ -27,8 +30,8 @@ const upload = multer({
 app.use(cors());
 app.use(express.json());
 
-const googleAI = new GoogleGenerativeAI("AIzaSyCL0hgJ6ppzgPrI7Xm9Q0f8GmLP3XZl59k");
-const googleModel = googleAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+const googleAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const googleModel = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // /api/gemini/ endpoint
 app.post('/api/gemini/', async (req, res) => {
@@ -67,7 +70,7 @@ app.post('/api/chatgpt/', async (req, res) => {
                 messages: [{ role: 'user', content: content }],
             }, {
                 headers: {
-                    'Authorization': `Bearer YOUR_OPENAI_API_KEY`, // Replace with your OpenAI API key
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`, // Replace with your OpenAI API key
                     'Content-Type': 'application/json',
                 },
             });
@@ -99,10 +102,9 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
 
     // 调用AI分析内容
     const analysisPrompt = `请从以下内容中提取主要话题标签，要求：
-    1. 返回JSON数组格式，包含10-15个话题
+    1. 返回JSON数组格式, 包含20个话题关键词
     2. 话题应反映内容的核心主题
     3. 使用中文标签
-    4. 按热度排序
     
     内容：
     ${content.substring(0, 10000)}`; // 限制内容长度
@@ -122,7 +124,7 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
 
     res.json({ 
       status: 'success',
-      topics: topics.slice(0, 10)
+      topics: topics.slice(0, 20)
     });
 
   } catch (error) {
@@ -165,17 +167,61 @@ app.post('/api/generate', async (req, res) => {
   const { topics, model, audience } = req.body;
   
   try {
-    // 这里添加实际的生成逻辑
-    const mockScripts = topics.map(topic => 
-      `关于${topic}的示例剧本内容...`
-    );
-    
+    if (!topics || topics.length < 3) {
+      return res.status(400).json({ error: '至少需要3个主题' });
+    }
+
+    const scripts = [];
+    const getRandomTopics = () => {
+      const shuffled = [...topics].sort(() => 0.5 - Math.random());
+      return shuffled.slice(0, 3);
+    };
+
+    for (let i = 0; i < 10; i++) {
+      const selectedTopics = getRandomTopics();
+      const prompt = `为${audience || '抖音用户'}生成一个短视频剧本，要求：
+1. 有机融合以下3个主题: ${selectedTopics.join('、')}
+2. 包含场景描述和对话
+3. 时长控制在60-120秒
+4. 使用适合${audience || '抖音用户'}的语言风格`;
+
+      // 根据选择的模型调用不同API
+      let script;
+      if (model === 'chatgpt') {
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+          model: 'gpt-3.5-turbo',
+          messages: [{ role: 'user', content: prompt }],
+        }, {
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        script = response.data.choices[0].message.content;
+      } else if (model === 'gemini') {
+        const result = await googleModel.generateContent(prompt);
+        script = result.response.text();
+      } else if (model === 'deepseek-r1') {
+        // use deepseek-r1 api
+      } else{
+        // default Gemini
+        const result = await googleModel.generateContent(prompt);
+        script = result.response.text();
+      }
+      
+      scripts.push(script);
+    }
+
     res.json({ 
       status: 'success',
-      scripts: mockScripts 
+      scripts 
     });
   } catch (error) {
-    res.status(500).json({ error: '内容生成失败' });
+    console.error('生成失败:', error);
+    res.status(500).json({ 
+      error: '内容生成失败',
+      details: error.statusText 
+    });
   }
 });
 
