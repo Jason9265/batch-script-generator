@@ -24,7 +24,7 @@ const upload = multer({
         file.mimetype === 'application/vnd.ms-excel') {
       cb(null, true);
     } else {
-      cb(new Error('只支持 CSV/Excel 文件'), false);
+      cb(new Error('only accept CSV/Excel files'), false);
     }
   }
 });
@@ -244,6 +244,28 @@ app.post('/api/generate', async (req, res) => {
       details: error.statusText 
     });
   }
+});
+
+app.post('/api/analyze-script', async (req, res) => {
+    const { script, question, audience } = req.body;
+    
+    try {
+        const prompt = `作为短视频专家，请分析以下剧本：
+        ------------------
+        剧本受众：${audience}
+        剧本内容：${script.substring(0, 5000)}
+        ------------------
+        需要分析的问题：${question}
+        请给出专业、详细的分析建议：`;
+
+        const result = await googleModel.generateContent(prompt);
+        const analysis = result.response.text();
+
+        res.json({ analysis });
+    } catch (error) {
+        console.error('分析失败:', error);
+        res.status(500).json({ error: '分析失败' });
+    }
 });
 
 app.get('/health', (req, res) => {
