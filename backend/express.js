@@ -8,12 +8,13 @@ const XLSX = require('xlsx');
 const stream = require('stream');
 const app = express();
 const port = 3000;
+require('dotenv').config();
 
 const count = 3;
 
-const OPENAI_API_KEY = '';
-const GEMINI_API_KEY = 'AIzaSyCL0hgJ6ppzgPrI7Xm9Q0f8GmLP3XZl59k';
-const DEEPSEEK_API_KEY = 'sk-be97bcb6ec2e448598672cf795768d3b';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 
 // 配置 Multer
 const upload = multer({
