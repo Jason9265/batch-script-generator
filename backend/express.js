@@ -13,6 +13,7 @@ const count = 3;
 
 const OPENAI_API_KEY = '';
 const GEMINI_API_KEY = 'AIzaSyCL0hgJ6ppzgPrI7Xm9Q0f8GmLP3XZl59k';
+const DEEPSEEK_API_KEY = 'sk-be97bcb6ec2e448598672cf795768d3b';
 
 // 配置 Multer
 const upload = multer({
@@ -202,8 +203,27 @@ app.post('/api/generate', async (req, res) => {
         const result = await googleModel.generateContent(prompt);
         script = result.response.text();
       } else if (model === 'deepseek-r1') {
-        // use deepseek-r1 api
-      } else{
+        const response = await axios.post('https://api.deepseek.com/chat/completions', {
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful script writer assistant."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          stream: false
+        }, {
+          headers: {
+            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        script = response.data.choices[0].message.content;
+      } else {
         // default Gemini
         const result = await googleModel.generateContent(prompt);
         script = result.response.text();
