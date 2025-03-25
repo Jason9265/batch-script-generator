@@ -350,12 +350,10 @@ app.use('/scripts', (req, res, next) => {
   next();
 });
 
-// 添加清除脚本端点
 app.delete('/api/scripts/clear', async (req, res) => {
   try {
     const files = await fs.promises.readdir(SCRIPT_DIR);
     
-    // 删除所有文件
     await Promise.all(
       files.map(file => 
         fs.promises.unlink(path.join(SCRIPT_DIR, file))
