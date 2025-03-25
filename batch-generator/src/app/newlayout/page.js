@@ -23,6 +23,7 @@ export default function Home() {
     const [fileName, setFileName] = useState('');
     const abortControllerRef = useRef(null);
     const [dots, setDots] = useState('');
+    const [fileList, setFileList] = useState([]);
 
     const handleFileChange = (event) => {
         const selectedFile = event.target.files[0];
@@ -90,6 +91,7 @@ export default function Home() {
         } finally {
             setLoading(false);
             abortControllerRef.current = null;
+            fetchFiles();
         }
     };
 
@@ -107,16 +109,13 @@ export default function Home() {
         }
     };
 
-    const handleClear = () => {
-        setPrompt('');
-        setAudience('');
-        setFiles([]);
-        setFile(null);
-        setFileName('');
-        setLogs([]);
+    const handleClear = async () => {
+        const confirmed = window.confirm("删除文件后无法找回，您确定要继续吗？");
+        if (confirmed) {
+            // delete all scripts
+        }
     };
 
-    // 添加动态省略号效果
     useEffect(() => {
         let interval;
         if (loading) {
@@ -131,6 +130,20 @@ export default function Home() {
         }
         return () => clearInterval(interval);
     }, [loading]);
+
+    const fetchFiles = async () => {
+        try {
+            const res = await apiClient.get('/api/scripts');
+            setFileList(res.data.files);
+        } catch (error) {
+            console.error('获取文件列表失败:', error);
+        }
+    };
+
+    // 在组件加载时调用
+    useEffect(() => {
+        fetchFiles();
+    }, []);
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -254,8 +267,27 @@ export default function Home() {
                     <div className="bg-white rounded-lg">
                         <div className="p-4 border-b flex justify-between items-center">
                             <h2 className="text-lg font-medium">运行结果</h2>
-                            <Button variant="ghost" size="sm">
-                                <Download className="h-4 w-4 mr-1" /> 导出结果
+                            <Button 
+                                variant="ghost" 
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={handleClear}
+                            >
+                                <svg 
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 mr-2"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    />
+                                </svg>
+                                清除所有结果
                             </Button>
                         </div>
                         <div className="overflow-x-auto">
@@ -270,70 +302,54 @@ export default function Home() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {files.length > 0 ? (
-                                        files.map((fileName, index) => (
-                                            <TableRow 
-                                                key={index}
-                                                className="hover:bg-gray-50 relative"
-                                            >
-                                                <TableCell className="p-0">
+                                    {fileList.map((file, index) => (
+                                        <TableRow key={file.name}>
+                                            <TableCell>{index + 1}</TableCell>
+                                            <TableCell>{file.name}</TableCell>
+                                            <TableCell>
+                                                <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                                                    已生成
+                                                </span>
+                                            </TableCell>
+                                            <TableCell>
+                                                {new Date(file.created).toLocaleString()}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex space-x-2">
+                                                    {/* 预览按钮 */}
                                                     <a
-                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
+                                                        href={`${API_BASE_URL}${file.url}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="full-width-link"
-                                                    >
-                                                        {index + 1}
-                                                    </a>
-                                                </TableCell>
-                                                <TableCell className="p-0">
-                                                    <a
-                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="full-width-link"
-                                                    >
-                                                        {fileName}
-                                                    </a>
-                                                </TableCell>
-                                                <TableCell className="p-0">
-                                                    <a
-                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="full-width-link"
-                                                    >
-                                                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">成功</span>
-                                                    </a>
-                                                </TableCell>
-                                                <TableCell className="p-0">
-                                                    <a
-                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="full-width-link"
-                                                    >
-                                                        {new Date().toLocaleString()}
-                                                    </a>
-                                                </TableCell>
-                                                <TableCell className="p-0">
-                                                    <a 
-                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
-                                                        download
                                                         className="text-blue-500 hover:text-blue-700"
+                                                        title="预览"
+                                                    >
+                                                        <svg 
+                                                            xmlns="http://www.w3.org/2000/svg" 
+                                                            className="h-4 w-4" 
+                                                            viewBox="0 0 24 24" 
+                                                            fill="none" 
+                                                            stroke="currentColor" 
+                                                            strokeWidth="2"
+                                                        >
+                                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                                            <circle cx="12" cy="12" r="3"/>
+                                                        </svg>
+                                                    </a>
+                                                    
+                                                    {/* 下载按钮 */}
+                                                    <a 
+                                                        href={`${API_BASE_URL}${file.url}`} 
+                                                        download
+                                                        className="text-green-500 hover:text-green-700"
+                                                        title="下载"
                                                     >
                                                         <Download className="h-4 w-4" />
                                                     </a>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    ) : (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="text-center py-4 text-gray-500">
-                                                暂无生成结果
+                                                </div>
                                             </TableCell>
                                         </TableRow>
-                                    )}
+                                    ))}
                                 </TableBody>
                             </Table>
                         </div>

@@ -38,13 +38,11 @@ app.use(express.json());
 const googleAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const googleModel = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-// 创建保存目录
 const SCRIPT_DIR = path.join(__dirname, 'generated_scripts');
 if (!fs.existsSync(SCRIPT_DIR)) {
   fs.mkdirSync(SCRIPT_DIR);
 }
 
-// /api/gemini/ endpoint
 app.post('/api/gemini/', async (req, res) => {
     const { prompt, audience, count } = req.body;
 
@@ -65,7 +63,6 @@ app.post('/api/gemini/', async (req, res) => {
     }
 });
 
-// /api/chatgpt/ endpoint
 app.post('/api/chatgpt/', async (req, res) => {
     const { prompt, audience, count } = req.body;
 
@@ -96,14 +93,12 @@ app.post('/api/chatgpt/', async (req, res) => {
     }
 });
 
-// 文件分析端点
 app.post('/api/analyze', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '未收到文件' });
     }
 
-    // 解析文件内容
     let content = '';
     if (req.file.mimetype === 'text/csv') {
       content = await parseCSV(req.file.buffer);
@@ -111,7 +106,6 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
       content = await parseExcel(req.file.buffer);
     }
 
-    // 调用AI分析内容
     const analysisPrompt = `请从以下内容中提取主要话题标签，要求：
     1. 返回JSON数组格式, 包含20个话题关键词
     2. 话题应反映内容的核心主题
@@ -147,7 +141,6 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
   }
 });
 
-// CSV解析函数
 async function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const results = [];
@@ -164,7 +157,6 @@ async function parseCSV(buffer) {
   });
 }
 
-// Excel解析函数
 async function parseExcel(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const sheetName = workbook.SheetNames[0];
@@ -173,7 +165,7 @@ async function parseExcel(buffer) {
     .map(row => JSON.stringify(row))
     .join('\n');
 }
-// 生成端点
+
 app.post('/api/generate', async (req, res) => {
   const { topics, model, audience } = req.body;
   
@@ -258,13 +250,15 @@ app.post('/api/generate', async (req, res) => {
     for (const script of scripts) {
       // 清理Markdown标签
       const cleanScript = script
-        .replace(/#{1,6}\s*/g, '')    // 移除标题符号
-        .replace(/\*\*(.*?)\*\*/g, '$1') // 移除加粗
-        .replace(/\*{1,2}(.*?)\*{1,2}/g, '$1') // 移除斜体和加粗
-        .replace(/\[.*?\]\(.*?\)/g, '$1') // 移除链接
         .replace(/```.*?\n/sg, '')   // 移除代码块
-        .replace(/-{3,}/g, '')       // 移除分割线
-        .replace(/\n{3,}/g, '\n\n'); // 合并多余空行
+        .replace(/\n{3,}/g, '\n\n') // 合并多余空行
+        .replace(/```/g, '') // 移除残留的代码块标记
+        // .replace(/-{3,}/g, '')       // 移除分割线
+        // .replace(/#{1,6}\s*/g, '')    // 移除标题符号
+        // .replace(/\*\*(.*?)\*\*/g, '$1') // 移除加粗
+        // .replace(/\*{1,2}(.*?)\*{1,2}/g, '$1') // 移除斜体和加粗
+        // .replace(/\[.*?\]\(.*?\)/g, '$1') // 移除链接
+        .trim(); // 移除前后空白
 
       // 生成唯一文件名
       const timestamp = Date.now() + '-' + Math.floor(Math.random() * 1000);
@@ -318,23 +312,73 @@ app.get('/health', (req, res) => {
     res.json({ status: 'Server is running now' });
 });
 
-// 在 app 初始化后添加
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
 });
 
-// 404 处理（必须放在所有路由之后）
-app.use((req, res) => {
-    res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// 在app.listen之前添加
 app.use('/scripts', express.static(SCRIPT_DIR, {
   setHeaders: (res) => {
     res.set('Content-Type', 'text/markdown; charset=utf-8');
   }
 }));
+
+// 添加文件列表获取端点
+app.get('/api/scripts', (req, res) => {
+  fs.readdir(SCRIPT_DIR, (err, files) => {
+    if (err) {
+      return res.status(500).json({ error: '无法读取文件列表' });
+    }
+    res.json({ 
+      files: files
+        .filter(file => path.extname(file) === '.md')
+        .map(file => ({
+          name: file,
+          url: `/scripts/${file}`,
+          created: fs.statSync(path.join(SCRIPT_DIR, file)).birthtime
+        }))
+    });
+  });
+});
+
+// 添加文件存在性检查中间件
+app.use('/scripts', (req, res, next) => {
+  const filePath = path.join(SCRIPT_DIR, req.path);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('文件不存在');
+  }
+  next();
+});
+
+// 添加清除脚本端点
+app.delete('/api/scripts/clear', async (req, res) => {
+  try {
+    const files = await fs.promises.readdir(SCRIPT_DIR);
+    
+    // 删除所有文件
+    await Promise.all(
+      files.map(file => 
+        fs.promises.unlink(path.join(SCRIPT_DIR, file))
+      )
+    );
+    
+    res.json({ 
+      status: 'success',
+      message: `已清除 ${files.length} 个文件`
+    });
+  } catch (error) {
+    console.error('清除失败:', error);
+    res.status(500).json({ 
+      error: '清除文件失败',
+      details: error.message 
+    });
+  }
+});
+
+// 404 处理（必须放在所有路由之后）
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
