@@ -6,11 +6,14 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
 const stream = require('stream');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 const port = 3000;
 require('dotenv').config();
 
 const count = 3;
+const numberOfScripts = 1;
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -34,6 +37,12 @@ app.use(express.json());
 
 const googleAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const googleModel = googleAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+// 创建保存目录
+const SCRIPT_DIR = path.join(__dirname, 'generated_scripts');
+if (!fs.existsSync(SCRIPT_DIR)) {
+  fs.mkdirSync(SCRIPT_DIR);
+}
 
 // /api/gemini/ endpoint
 app.post('/api/gemini/', async (req, res) => {
@@ -169,6 +178,9 @@ app.post('/api/generate', async (req, res) => {
   const { topics, model, audience } = req.body;
   
   try {
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
     if (!topics || topics.length < 3) {
       return res.status(400).json({ error: '至少需要3个主题' });
     }
@@ -179,13 +191,14 @@ app.post('/api/generate', async (req, res) => {
       return shuffled.slice(0, 3);
     };
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < numberOfScripts; i++) {
       const selectedTopics = getRandomTopics();
       const prompt = `为${audience || '抖音用户'}生成一个短视频剧本，要求：
 1. 有机融合以下3个主题: ${selectedTopics.join('、')}
 2. 包含场景描述和对话
-3. 时长控制在60-120秒
-4. 使用适合${audience || '抖音用户'}的语言风格`;
+3. 时长控制在30-45秒
+4. 使用适合${audience || '抖音用户'}的语言风格
+5. 输出为markdown格式 只返回markdown得内容便于保存`;
 
       // 根据选择的模型调用不同API
       let script;
@@ -198,12 +211,19 @@ app.post('/api/generate', async (req, res) => {
             'Authorization': `Bearer ${OPENAI_API_KEY}`,
             'Content-Type': 'application/json',
           },
+          signal: controller.signal
         });
         script = response.data.choices[0].message.content;
       } else if (model === 'gemini') {
-        const result = await googleModel.generateContent(prompt);
+        const result = await Promise.race([
+          googleModel.generateContent(prompt),
+          new Promise((_, reject) => 
+            controller.signal.onabort = () => 
+              reject(new Error('AbortError'))
+          )
+        ]);
         script = result.response.text();
-      } else if (model === 'deepseek-r1') {
+      } else if (model === 'deepseek') {
         const response = await axios.post('https://api.deepseek.com/chat/completions', {
           model: "deepseek-chat",
           messages: [
@@ -233,11 +253,37 @@ app.post('/api/generate', async (req, res) => {
       scripts.push(script);
     }
 
+    // 处理并保存每个剧本
+    const fileNames = [];
+    for (const script of scripts) {
+      // 清理Markdown标签
+      const cleanScript = script
+        .replace(/#{1,6}\s*/g, '')    // 移除标题符号
+        .replace(/\*\*(.*?)\*\*/g, '$1') // 移除加粗
+        .replace(/\*{1,2}(.*?)\*{1,2}/g, '$1') // 移除斜体和加粗
+        .replace(/\[.*?\]\(.*?\)/g, '$1') // 移除链接
+        .replace(/```.*?\n/sg, '')   // 移除代码块
+        .replace(/-{3,}/g, '')       // 移除分割线
+        .replace(/\n{3,}/g, '\n\n'); // 合并多余空行
+
+      // 生成唯一文件名
+      const timestamp = Date.now() + '-' + Math.floor(Math.random() * 1000);
+      const fileName = `${timestamp}.md`;
+      const filePath = path.join(SCRIPT_DIR, fileName);
+      
+      await fs.promises.writeFile(filePath, cleanScript);
+      fileNames.push(fileName);
+    }
+
     res.json({ 
       status: 'success',
-      scripts 
+      files: fileNames // 仅返回文件名数组
     });
   } catch (error) {
+    if (error.message === 'AbortError') {
+      console.log('请求被用户中止');
+      return res.status(499).json({ error: '用户取消请求' }); // 499为自定义状态码
+    }
     console.error('生成失败:', error);
     res.status(500).json({ 
       error: '内容生成失败',
@@ -282,6 +328,13 @@ app.use((req, res, next) => {
 app.use((req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
+
+// 在app.listen之前添加
+app.use('/scripts', express.static(SCRIPT_DIR, {
+  setHeaders: (res) => {
+    res.set('Content-Type', 'text/markdown; charset=utf-8');
+  }
+}));
 
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);

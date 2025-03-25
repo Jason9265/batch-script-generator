@@ -118,3 +118,36 @@
     @apply bg-background text-foreground;
   }
 }
+
+.full-width-link::after {
+  content: "";
+  @apply absolute inset-0 z-10;
+}
+
+.prose {
+  max-width: 65ch;
+}
+
+.prose img {
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.prose th, .prose td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.prose blockquote {
+  border-left: 4px solid #e5e7eb;
+  padding-left: 1rem;
+  color: #6b7280;
+  margin: 1rem 0;
+}

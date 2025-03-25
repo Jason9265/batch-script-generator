@@ -1,13 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { UploadCloud, Download, Play, Square } from 'lucide-react';
-import Link from 'next/link';
 
 const API_BASE_URL = 'http://localhost:3000';
 const apiClient = axios.create({
@@ -17,12 +15,14 @@ const apiClient = axios.create({
 export default function Home() {
     const [prompt, setPrompt] = useState('');
     const [audience, setAudience] = useState('');
-    const [scripts, setScripts] = useState([]);
-    const [model, setModel] = useState('gemini');
+    const [files, setFiles] = useState([]);
+    const [model, setModel] = useState('deepseek');
     const [loading, setLoading] = useState(false);
     const [file, setFile] = useState(null);
     const [logs, setLogs] = useState([]);
     const [fileName, setFileName] = useState('');
+    const abortControllerRef = useRef(null);
+    const [dots, setDots] = useState('');
 
     const handleFileChange = (event) => {
         const selectedFile = event.target.files[0];
@@ -41,13 +41,8 @@ export default function Home() {
     };
 
     const handleGenerate = async () => {
-        if (!file) {
-            alert('请先上传数据文件');
-            return;
-        }
-
+        abortControllerRef.current = new AbortController();
         setLoading(true);
-        // setLogs([]);
         
         try {
             addLog('INFO', '正在初始化分析环境...');
@@ -59,7 +54,8 @@ export default function Home() {
             addLog('INFO', `开始执行 ${fileName}`);
             
             const analysisRes = await apiClient.post('/api/analyze', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+                headers: { 'Content-Type': 'multipart/form-data' },
+                signal: abortControllerRef.current.signal
             });
             
             console.log(analysisRes.data);
@@ -73,39 +69,83 @@ export default function Home() {
                 topics: analysisRes.data.topics,
                 model,
                 audience
+            }, {
+                signal: abortControllerRef.current.signal
             });
             
             console.log('生成信息: ', generationRes.data);
-            setScripts(generationRes.data.scripts);
+            setFiles(generationRes.data.files);
             
             addLog('INFO', '剧本生成完成');
             
         } catch (error) {
+            // 检查是否为取消请求导致的错误
+            if (axios.isCancel(error) || error.name === 'AbortError' || error.name === 'CanceledError') {
+                addLog('INFO', '用户主动停止生成');
+                return; // 直接返回，不显示错误
+            }
+            
             console.error('处理失败:', error);
-            addLog('ERROR', `行号 127: ${error.message || '处理过程中发生错误'}`);
+            addLog('ERROR', `生成失败: ${error.message || '未知错误'}`);
         } finally {
             setLoading(false);
+            abortControllerRef.current = null;
+        }
+    };
+
+    const handleAbort = () => {
+        if (abortControllerRef.current) {
+            try {
+                abortControllerRef.current.abort();
+                addLog('INFO', '正在停止生成...');
+            } catch (error) {
+                // 忽略中止过程中的错误
+                console.log('停止过程中出现错误:', error);
+            }
+            setLoading(false);
+            abortControllerRef.current = null;
         }
     };
 
     const handleClear = () => {
         setPrompt('');
         setAudience('');
-        setScripts([]);
+        setFiles([]);
         setFile(null);
         setFileName('');
         setLogs([]);
     };
+
+    // 添加动态省略号效果
+    useEffect(() => {
+        let interval;
+        if (loading) {
+            interval = setInterval(() => {
+                setDots(prev => {
+                    if (prev === '') return '.';
+                    if (prev === '.') return '..';
+                    if (prev === '..') return '...';
+                    return '';
+                });
+            }, 500); // 每500ms更新一次
+        }
+        return () => clearInterval(interval);
+    }, [loading]);
 
     return (
         <div className="min-h-screen bg-gray-50">
             {/* 顶部导航 */}
             <header className="border-b bg-white p-4">
                 <div className="container mx-auto flex justify-between items-center">
-                    <div className="text-2xl font-bold">logo</div>
+                    <div className="flex items-center">
+                        <img
+                            src="/images/black-ring-logo.svg"
+                            alt="Logo"
+                            className="h-8 w-auto"
+                        />
+                    </div>
                     <nav className="space-x-4">
                         <a href="#" className="text-gray-600">文档</a>
-                        <a href="#" className="text-gray-600">API</a>
                         <a href="#" className="text-gray-600">帮助</a>
                     </nav>
                 </div>
@@ -149,7 +189,7 @@ export default function Home() {
                                 <SelectContent>
                                     <SelectItem value="gemini">Google Gemini 2.0</SelectItem>
                                     <SelectItem value="chatgpt">ChatGPT</SelectItem>
-                                    <SelectItem value="deepseek-r1">DeepSeek-R1</SelectItem>
+                                    <SelectItem value="deepseek">DeepSeek</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -180,12 +220,14 @@ export default function Home() {
                             <div className="flex space-x-3">
                                 <div className="flex items-center">
                                     <div className={`h-2 w-2 rounded-full ${loading ? 'bg-green-500' : 'bg-gray-300'} mr-2`}></div>
-                                    <span className="text-sm">运行中</span>
+                                    <span className="text-sm">
+                                        {loading ? `运行中${dots}` : '运行状态'}
+                                    </span>
                                 </div>
                                 <Button 
                                     variant={loading ? "destructive" : "default"}
                                     size="sm"
-                                    onClick={loading ? handleClear : handleGenerate}
+                                    onClick={loading ? handleAbort : handleGenerate}
                                 >
                                     {loading ? (
                                         <Square className="h-4 w-4 mr-1" />
@@ -228,31 +270,60 @@ export default function Home() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {scripts.length > 0 ? (
-                                        scripts.map((script, index) => (
-                                            <TableRow key={index}>
-                                                <TableCell>{index + 1}</TableCell>
-                                                <TableCell>{`剧本_${index + 1}.txt`}</TableCell>
-                                                <TableCell>
-                                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">成功</span>
+                                    {files.length > 0 ? (
+                                        files.map((fileName, index) => (
+                                            <TableRow 
+                                                key={index}
+                                                className="hover:bg-gray-50 relative"
+                                            >
+                                                <TableCell className="p-0">
+                                                    <a
+                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="full-width-link"
+                                                    >
+                                                        {index + 1}
+                                                    </a>
                                                 </TableCell>
-                                                <TableCell>{new Date().toLocaleString()}</TableCell>
-                                                <TableCell>
-                                                    <Link 
-                                                        href={{
-                                                            pathname: `/scriptdetail/${index+1}`,
-                                                            query: { 
-                                                                script: encodeURIComponent(script),
-                                                                audience: encodeURIComponent(audience)
-                                                            }
-                                                        }}
+                                                <TableCell className="p-0">
+                                                    <a
+                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="full-width-link"
+                                                    >
+                                                        {fileName}
+                                                    </a>
+                                                </TableCell>
+                                                <TableCell className="p-0">
+                                                    <a
+                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="full-width-link"
+                                                    >
+                                                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">成功</span>
+                                                    </a>
+                                                </TableCell>
+                                                <TableCell className="p-0">
+                                                    <a
+                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="full-width-link"
+                                                    >
+                                                        {new Date().toLocaleString()}
+                                                    </a>
+                                                </TableCell>
+                                                <TableCell className="p-0">
+                                                    <a 
+                                                        href={`${API_BASE_URL}/scripts/${fileName}`}
+                                                        download
                                                         className="text-blue-500 hover:text-blue-700"
                                                     >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                                                            <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                                                        </svg>
-                                                    </Link>
+                                                        <Download className="h-4 w-4" />
+                                                    </a>
                                                 </TableCell>
                                             </TableRow>
                                         ))
