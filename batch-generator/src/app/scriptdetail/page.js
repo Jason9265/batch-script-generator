@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
@@ -12,10 +12,27 @@ export default function ScriptDetail() {
     const [question, setQuestion] = useState('');
     const [analysis, setAnalysis] = useState('');
     const [loading, setLoading] = useState(false);
+    const [originalScript, setOriginalScript] = useState('');
+    const [error, setError] = useState('');
 
-    // 获取剧本内容
-    const originalScript = decodeURIComponent(searchParams.get('script'));
-    const audience = decodeURIComponent(searchParams.get('audience'));
+    // 从URL参数获取文件名
+    const filename = decodeURIComponent(searchParams.get('file'));
+
+    useEffect(() => {
+        const fetchScript = async () => {
+            try {
+                const response = await axios.get(`/scripts/${filename}`);
+                setOriginalScript(response.data);
+            } catch (error) {
+                console.error('获取文件失败:', error);
+                setError('无法加载文件，请检查文件是否存在');
+            }
+        };
+
+        if (filename) {
+            fetchScript();
+        }
+    }, [filename]);
 
     const handleAnalyze = async () => {
         if (!question) return;
@@ -42,28 +59,34 @@ export default function ScriptDetail() {
             <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 左侧剧本内容 */}
                 <div className="bg-white p-6 rounded-lg shadow">
-                    <h2 className="text-xl font-semibold mb-4">原始剧本</h2>
-                    <div className="whitespace-pre-wrap bg-gray-50 p-4 rounded-md">
-                        <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                                h1: ({ node, ...props }) => <h1 className="text-3xl font-bold my-4" {...props} />,
-                                h2: ({ node, ...props }) => <h2 className="text-2xl font-semibold my-3" {...props} />,
-                                h3: ({ node, ...props }) => <h3 className="text-xl font-medium my-2" {...props} />,
-                                p: ({ node, ...props }) => <p className="mb-4 leading-relaxed" {...props} />,
-                                ul: ({ node, ...props }) => <ul className="list-disc pl-6 mb-4" {...props} />,
-                                ol: ({ node, ...props }) => <ol className="list-decimal pl-6 mb-4" {...props} />,
-                                code: ({ node, ...props }) => (
-                                    <code className="bg-gray-100 px-2 py-1 rounded font-mono" {...props} />
-                                ),
-                                a: ({ node, ...props }) => (
-                                    <a className="text-blue-500 hover:underline" target="_blank" {...props} />
-                                )
-                            }}
-                        >
-                            {originalScript}
-                        </ReactMarkdown>
-                    </div>
+                    <h2 className="text-xl font-semibold mb-4">剧本内容</h2>
+                    {error ? (
+                        <div className="text-red-500">{error}</div>
+                    ) : originalScript ? (
+                        <div className="whitespace-pre-wrap bg-gray-50 p-4 rounded-md">
+                            <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                    h1: ({ node, ...props }) => <h1 className="text-3xl font-bold my-4" {...props} />,
+                                    h2: ({ node, ...props }) => <h2 className="text-2xl font-semibold my-3" {...props} />,
+                                    h3: ({ node, ...props }) => <h3 className="text-xl font-medium my-2" {...props} />,
+                                    p: ({ node, ...props }) => <p className="mb-4 leading-relaxed" {...props} />,
+                                    ul: ({ node, ...props }) => <ul className="list-disc pl-6 mb-4" {...props} />,
+                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-6 mb-4" {...props} />,
+                                    code: ({ node, ...props }) => (
+                                        <code className="bg-gray-100 px-2 py-1 rounded font-mono" {...props} />
+                                    ),
+                                    a: ({ node, ...props }) => (
+                                        <a className="text-blue-500 hover:underline" target="_blank" {...props} />
+                                    )
+                                }}
+                            >
+                                {originalScript}
+                            </ReactMarkdown>
+                        </div>
+                    ) : (
+                        <div className="text-gray-500">正在加载文件...</div>
+                    )}
                 </div>
 
                 {/* 右侧分析结果 */}

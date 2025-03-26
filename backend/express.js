@@ -373,6 +373,25 @@ app.delete('/api/scripts/clear', async (req, res) => {
   }
 });
 
+// 添加专门的文件下载端点
+app.get('/api/scripts/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(SCRIPT_DIR, filename);
+
+  // 验证文件存在性
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: '文件不存在' });
+  }
+
+  // 设置下载头信息
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  
+  // 创建文件流
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+});
+
 // 404 处理（必须放在所有路由之后）
 app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });

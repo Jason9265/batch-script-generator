@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UploadCloud, Download, Play, Square } from 'lucide-react';
+import { UploadCloud, Eye, Download, Play, Square, Edit } from 'lucide-react';
+import Link from 'next/link';
 
 const API_BASE_URL = 'http://localhost:3000';
 const apiClient = axios.create({
@@ -15,7 +16,6 @@ const apiClient = axios.create({
 export default function Home() {
     const [prompt, setPrompt] = useState('');
     const [audience, setAudience] = useState('');
-    const [files, setFiles] = useState([]);
     const [model, setModel] = useState('deepseek');
     const [loading, setLoading] = useState(false);
     const [file, setFile] = useState(null);
@@ -112,7 +112,34 @@ export default function Home() {
     const handleClear = async () => {
         const confirmed = window.confirm("删除文件后无法找回，您确定要继续吗？");
         if (confirmed) {
-            // delete all scripts
+            try {
+                // 调用DELETE API
+                const response = await apiClient.delete('/api/scripts/clear', {
+                    params: { confirm: 'true' } // 添加确认参数
+                });
+                
+                console.log('清除结果:', response.data);
+                
+                // 更新UI状态
+                setFileList([]); // 清空文件列表
+                setFiles([]);    // 清空当前生成的文件
+                fetchFiles();    // 刷新文件列表
+                
+                // 添加日志记录
+                addLog('INFO', `已清除 ${response.data.message}`);
+                alert('文件清除成功');
+                
+            } catch (error) {
+                console.error('清除失败:', {
+                    message: error.message,
+                    response: error.response?.data
+                });
+                
+                // 显示详细错误信息
+                const errorMsg = error.response?.data?.error || '清除操作失败';
+                addLog('ERROR', errorMsg);
+                alert(`错误: ${errorMsg}`);
+            }
         }
     };
 
@@ -144,6 +171,35 @@ export default function Home() {
     useEffect(() => {
         fetchFiles();
     }, []);
+
+    // 下载处理函数
+    const handleDownload = async (filename) => {
+        try {
+            // 添加安全校验
+            if (!filename.match(/^[\w-]+\.md$/)) {
+                return res.status(400).json({ error: '无效文件名' });
+            }
+
+            const response = await apiClient.get(`/api/scripts/download/${filename}`, {
+                responseType: 'blob' // 重要：指定响应类型为blob
+            });
+
+            // 创建临时下载链接
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            
+            // 清理资源
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('下载失败:', error);
+            alert('文件下载失败');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -316,36 +372,32 @@ export default function Home() {
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex space-x-2">
-                                                    {/* 预览按钮 */}
-                                                    <a
-                                                        href={`${API_BASE_URL}${file.url}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-500 hover:text-blue-700"
-                                                        title="预览"
+                                                    {/* 编辑按钮 */}
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm"
+                                                        className="text-purple-600 hover:text-purple-700 px-2"
+                                                        asChild
                                                     >
-                                                        <svg 
-                                                            xmlns="http://www.w3.org/2000/svg" 
-                                                            className="h-4 w-4" 
-                                                            viewBox="0 0 24 24" 
-                                                            fill="none" 
-                                                            stroke="currentColor" 
-                                                            strokeWidth="2"
+                                                        <a
+                                                            href={`/scriptdetail?file=${encodeURIComponent(file.url)}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title="编辑"
                                                         >
-                                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                                            <circle cx="12" cy="12" r="3"/>
-                                                        </svg>
-                                                    </a>
-                                                    
+                                                            <Edit className="h-4 w-4" />
+                                                        </a>
+                                                    </Button>
+
                                                     {/* 下载按钮 */}
-                                                    <a 
-                                                        href={`${API_BASE_URL}${file.url}`} 
-                                                        download
-                                                        className="text-green-500 hover:text-green-700"
-                                                        title="下载"
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm"
+                                                        className="text-green-600 hover:text-green-700 px-2"
+                                                        onClick={() => handleDownload(file.name)}
                                                     >
                                                         <Download className="h-4 w-4" />
-                                                    </a>
+                                                    </Button>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
