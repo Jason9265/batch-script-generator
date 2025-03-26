@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UploadCloud, Eye, Download, Play, Square, Edit } from 'lucide-react';
-import Link from 'next/link';
+import { UploadCloud, Download, Play, Square, Edit } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL
 });

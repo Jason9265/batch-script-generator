@@ -334,7 +334,7 @@ app.get('/api/scripts', (req, res) => {
         .filter(file => path.extname(file) === '.md')
         .map(file => ({
           name: file,
-          url: `/scripts/${file}`,
+          url: `${file}`,
           created: fs.statSync(path.join(SCRIPT_DIR, file)).birthtime
         }))
     });

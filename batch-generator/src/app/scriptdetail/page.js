@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
 export default function ScriptDetail() {
     const searchParams = useSearchParams();
     const [question, setQuestion] = useState('');
@@ -21,15 +23,35 @@ export default function ScriptDetail() {
     useEffect(() => {
         const fetchScript = async () => {
             try {
-                const response = await axios.get(`/scripts/${filename}`);
-                setOriginalScript(response.data);
+                // 使用encodeURIComponent处理特殊字符
+                const encodedFilename = encodeURIComponent(filename);
+                const response = await axios.get(
+                    `${API_BASE_URL}/scripts/${encodedFilename}`,
+                    {
+                        responseType: 'text', // 明确指定响应类型
+                        transformResponse: [(data) => data], // 防止JSON自动解析
+                    }
+                );
+                
+                // 处理Windows系统可能存在的BOM头
+                const cleanScript = response.data.replace(/^\uFEFF/, '');
+                setOriginalScript(cleanScript);
+                
             } catch (error) {
                 console.error('获取文件失败:', error);
-                setError('无法加载文件，请检查文件是否存在');
+                setError(`文件加载失败: ${error.response?.status === 404 
+                    ? '文件不存在' 
+                    : '服务器错误'}`);
             }
         };
 
         if (filename) {
+            console.log(filename);
+            // 添加文件名格式验证
+            if (!/^[\w-]+\.md$/.test(filename)) {
+                setError('无效文件名格式');
+                return;
+            }
             fetchScript();
         }
     }, [filename]);
