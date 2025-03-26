@@ -248,7 +248,7 @@ export default function Home() {
 
                     {inputType === 'file' ? (
                         <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                            <div className="flex flex-col items-center justify-center">
+                            <div className="flex flex-col items-center justify-center h-40">
                                 <UploadCloud className="h-8 w-8 text-gray-400 mb-2" />
                                 <p className="text-sm text-gray-500 mb-2">将文件拖放到此处，或</p>
                                 <div>
