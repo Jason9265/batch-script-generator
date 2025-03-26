@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { UploadCloud, Download, Play, Square, Edit } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Slider } from '@/components/ui/slider';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -24,6 +26,9 @@ export default function Home() {
     const abortControllerRef = useRef(null);
     const [dots, setDots] = useState('');
     const [fileList, setFileList] = useState([]);
+    const [inputType, setInputType] = useState('file');
+    const [textContent, setTextContent] = useState('');
+    const [numberOfScripts, setNumberOfScripts] = useState(1);
 
     const handleFileChange = (event) => {
         const selectedFile = event.target.files[0];
@@ -49,41 +54,53 @@ export default function Home() {
             addLog('INFO', '正在初始化分析环境...');
             addLog('INFO', `加载信息: 使用模型 ${model}`);
             
-            const formData = new FormData();
-            formData.append('file', file);
-            
-            addLog('INFO', `开始执行 ${fileName}`);
-            
-            const analysisRes = await apiClient.post('/api/analyze', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                signal: abortControllerRef.current.signal
-            });
-            
-            console.log(analysisRes.data);
-            // 添加分析结果到日志
-            addLog('INFO', `分析完成 - 检测到 ${analysisRes.data.topics?.length || 0} 个主题`);
-            addLog('INFO', `主要关键词: ${analysisRes.data.topics?.join(', ') || '无'}`);
-            addLog('INFO', `正在生成剧本...`);
-            
-            // Second generation step
-            const generationRes = await apiClient.post('/api/generate', {
-                topics: analysisRes.data.topics,
-                model,
-                audience
-            }, {
-                signal: abortControllerRef.current.signal
-            });
-            
-            console.log('生成信息: ', generationRes.data);
-            setFiles(generationRes.data.files);
-            
-            addLog('INFO', '剧本生成完成');
-            
+            if (inputType === 'file') {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                addLog('INFO', `开始执行 ${fileName}`);
+                
+                const analysisRes = await apiClient.post('/api/analyze', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                    signal: abortControllerRef.current.signal
+                });
+                
+                console.log(analysisRes.data);
+
+                addLog('INFO', `分析完成 - 检测到 ${analysisRes.data.topics?.length || 0} 个主题`);
+                addLog('INFO', `主要关键词: ${analysisRes.data.topics?.join(', ') || '无'}`);
+                addLog('INFO', `正在生成剧本...`);
+                
+                const generationRes = await apiClient.post('/api/generate', {
+                    topics: analysisRes.data.topics,
+                    model,
+                    audience,
+                    numberOfScripts
+                }, {
+                    signal: abortControllerRef.current.signal
+                });
+                
+                console.log('生成信息: ', generationRes.data);
+
+                addLog('INFO', '剧本生成完成');
+            } else {
+                addLog('INFO', '开始处理文本内容...');
+                const generationRes = await apiClient.post('/api/textgenerate', {
+                    text: textContent,
+                    model,
+                    audience,
+                    numberOfScripts
+                }, {
+                    signal: abortControllerRef.current.signal
+                });
+                
+                console.log('生成信息: ', generationRes.data);
+                addLog('INFO', '剧本生成完成');
+            }
         } catch (error) {
-            // 检查是否为取消请求导致的错误
             if (axios.isCancel(error) || error.name === 'AbortError' || error.name === 'CanceledError') {
                 addLog('INFO', '用户主动停止生成');
-                return; // 直接返回，不显示错误
+                return;
             }
             
             console.error('处理失败:', error);
@@ -101,7 +118,6 @@ export default function Home() {
                 abortControllerRef.current.abort();
                 addLog('INFO', '正在停止生成...');
             } catch (error) {
-                // 忽略中止过程中的错误
                 console.log('停止过程中出现错误:', error);
             }
             setLoading(false);
@@ -113,19 +129,15 @@ export default function Home() {
         const confirmed = window.confirm("删除文件后无法找回，您确定要继续吗？");
         if (confirmed) {
             try {
-                // 调用DELETE API
                 const response = await apiClient.delete('/api/scripts/clear', {
                     params: { confirm: 'true' } // 添加确认参数
                 });
                 
                 console.log('清除结果:', response.data);
                 
-                // 更新UI状态
                 setFileList([]); // 清空文件列表
-                setFiles([]);    // 清空当前生成的文件
                 fetchFiles();    // 刷新文件列表
                 
-                // 添加日志记录
                 addLog('INFO', `已清除 ${response.data.message}`);
                 alert('文件清除成功');
                 
@@ -135,7 +147,6 @@ export default function Home() {
                     response: error.response?.data
                 });
                 
-                // 显示详细错误信息
                 const errorMsg = error.response?.data?.error || '清除操作失败';
                 addLog('ERROR', errorMsg);
                 alert(`错误: ${errorMsg}`);
@@ -167,12 +178,10 @@ export default function Home() {
         }
     };
 
-    // 在组件加载时调用
     useEffect(() => {
         fetchFiles();
     }, []);
 
-    // 下载处理函数
     const handleDownload = async (filename) => {
         try {
             // 添加安全校验
@@ -181,7 +190,7 @@ export default function Home() {
             }
 
             const response = await apiClient.get(`/api/scripts/download/${filename}`, {
-                responseType: 'blob' // 重要：指定响应类型为blob
+                responseType: 'blob'
             });
 
             // 创建临时下载链接
@@ -203,7 +212,6 @@ export default function Home() {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* 顶部导航 */}
             <header className="border-b bg-white p-4">
                 <div className="container mx-auto flex justify-between items-center">
                     <div className="flex items-center">
@@ -223,32 +231,58 @@ export default function Home() {
             <div className="container mx-auto p-4 space-y-6">
                 {/* 文件上传区域 */}
                 <div className="bg-white rounded-lg p-4">
-                    <h2 className="text-lg font-medium mb-3">文件上传</h2>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                        <div className="flex flex-col items-center justify-center">
-                            <UploadCloud className="h-8 w-8 text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-500 mb-2">将文件拖放到此处，或</p>
-                            <div>
-                                <label htmlFor="file-upload" className="bg-blue-500 text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-blue-600 text-sm">
-                                    选择文件
-                                </label>
-                                <input 
-                                    id="file-upload" 
-                                    type="file" 
-                                    accept=".csv,.xls" 
-                                    onChange={handleFileChange} 
-                                    className="hidden" 
-                                />
+                    <Tabs 
+                        value={inputType} 
+                        onValueChange={setInputType}
+                        className="mb-4"
+                    >
+                        <TabsList className="grid grid-cols-2">
+                            <TabsTrigger value="file" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+                                文件上传
+                            </TabsTrigger>
+                            <TabsTrigger value="text" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+                                输入剧情
+                            </TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+
+                    {inputType === 'file' ? (
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                            <div className="flex flex-col items-center justify-center">
+                                <UploadCloud className="h-8 w-8 text-gray-400 mb-2" />
+                                <p className="text-sm text-gray-500 mb-2">将文件拖放到此处，或</p>
+                                <div>
+                                    <label htmlFor="file-upload" className="bg-blue-500 text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-blue-600 text-sm">
+                                        选择文件
+                                    </label>
+                                    <input 
+                                        id="file-upload" 
+                                        type="file" 
+                                        accept=".csv,.xls" 
+                                        onChange={handleFileChange} 
+                                        className="hidden" 
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">支持的文件格式: .csv, .xls</p>
+                                {fileName && (
+                                    <p className="text-sm text-green-600 mt-1">已选择: {fileName}</p>
+                                )}
                             </div>
-                            <p className="text-xs text-gray-500 mt-2">支持的文件格式: .csv, .xls</p>
-                            {fileName && (
-                                <p className="text-sm text-green-600 mt-1">已选择: {fileName}</p>
-                            )}
                         </div>
-                    </div>
+                    ) : (
+                        <div className="border rounded-lg p-4">
+                            <textarea
+                                value={textContent}
+                                onChange={(e) => setTextContent(e.target.value)}
+                                placeholder="请输入剧情内容..."
+                                className="w-full h-40 p-2 border rounded-md"
+                                rows="6"
+                            />
+                        </div>
+                    )}
                     
                     {/* 配置区域 */}
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">AI 模型</label>
                             <Select value={model} onValueChange={setModel}>
@@ -263,11 +297,29 @@ export default function Home() {
                             </Select>
                         </div>
                         <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-medium text-gray-700">生成数量</label>
+                                <span className="text-sm text-gray-500">{numberOfScripts}</span>
+                            </div>
+                            <div className="flex items-center h-10 px-2">
+                                <Slider
+                                    defaultValue={[numberOfScripts]}
+                                    min={1}
+                                    max={20}
+                                    step={1}
+                                    onValueChange={(value) => setNumberOfScripts(value[0])}
+                                    className="w-full"
+                                />
+                            </div>
+                        </div>
+                        <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">剧本主题</label>
                             <Input
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
                                 placeholder="请输入剧本的主题或关键词"
+                                disabled
+                                className="bg-gray-100 cursor-not-allowed"
                             />
                         </div>
                         <div>

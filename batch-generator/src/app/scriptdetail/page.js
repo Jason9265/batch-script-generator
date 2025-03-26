@@ -17,19 +17,17 @@ export default function ScriptDetail() {
     const [originalScript, setOriginalScript] = useState('');
     const [error, setError] = useState('');
 
-    // 从URL参数获取文件名
     const filename = decodeURIComponent(searchParams.get('file'));
 
     useEffect(() => {
         const fetchScript = async () => {
             try {
-                // 使用encodeURIComponent处理特殊字符
                 const encodedFilename = encodeURIComponent(filename);
                 const response = await axios.get(
                     `${API_BASE_URL}/scripts/${encodedFilename}`,
                     {
-                        responseType: 'text', // 明确指定响应类型
-                        transformResponse: [(data) => data], // 防止JSON自动解析
+                        responseType: 'text',
+                        transformResponse: [(data) => data],
                     }
                 );
                 
@@ -46,8 +44,6 @@ export default function ScriptDetail() {
         };
 
         if (filename) {
-            console.log(filename);
-            // 添加文件名格式验证
             if (!/^[\w-]+\.md$/.test(filename)) {
                 setError('无效文件名格式');
                 return;

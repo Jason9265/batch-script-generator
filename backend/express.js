@@ -12,9 +12,6 @@ const app = express();
 const port = 3000;
 require('dotenv').config();
 
-const count = 3;
-const numberOfScripts = 1;
-
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
@@ -78,7 +75,7 @@ app.post('/api/chatgpt/', async (req, res) => {
                 messages: [{ role: 'user', content: content }],
             }, {
                 headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`, // Replace with your OpenAI API key
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
                     'Content-Type': 'application/json',
                 },
             });
@@ -118,7 +115,6 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
     const response = await result.response;
     const text = response.text();
     
-    // 解析AI响应
     const jsonMatch = text.match(/\[.*?\]/s);
     if (!jsonMatch) {
       throw new Error('AI响应格式错误');
@@ -167,7 +163,7 @@ async function parseExcel(buffer) {
 }
 
 app.post('/api/generate', async (req, res) => {
-  const { topics, model, audience } = req.body;
+  const { topics, model, audience, numberOfScripts } = req.body;
   
   try {
     const controller = new AbortController();
@@ -306,6 +302,114 @@ app.post('/api/analyze-script', async (req, res) => {
         console.error('分析失败:', error);
         res.status(500).json({ error: '分析失败' });
     }
+});
+
+app.post('/api/textgenerate', async (req, res) => {
+  const { text, model, audience, numberOfScripts = 1 } = req.body;
+  
+  try {
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
+    if (!text) {
+      return res.status(400).json({ error: '请提供文本内容' });
+    }
+    
+    const scripts = [];
+
+    for (let i = 0; i < (numberOfScripts || 1); i++) {
+      const prompt = `为${audience || '抖音用户'}生成一个短视频剧本，要求：
+1. ${text}
+2. 包含场景描述和对话
+3. 时长控制在30-45秒
+4. 使用适合${audience || '抖音用户'}的语言风格
+5. 输出为markdown格式 只返回markdown得内容便于保存`;
+
+      let script;
+      if (model === 'chatgpt') {
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+          model: 'gpt-3.5-turbo',
+          messages: [{ role: 'user', content: prompt }],
+        }, {
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal
+        });
+        script = response.data.choices[0].message.content;
+      } else if (model === 'gemini') {
+        const result = await Promise.race([
+          googleModel.generateContent(prompt),
+          new Promise((_, reject) => 
+            controller.signal.onabort = () => 
+              reject(new Error('AbortError'))
+          )
+        ]);
+        script = result.response.text();
+      } else if (model === 'deepseek') {
+        const response = await axios.post('https://api.deepseek.com/chat/completions', {
+          model: "deepseek-chat",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful script writer assistant."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          stream: false
+        }, {
+          headers: {
+            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        script = response.data.choices[0].message.content;
+      } else {
+        const result = await googleModel.generateContent(prompt);
+        script = result.response.text();
+      }
+      
+      scripts.push(script);
+    }
+
+    // 处理并保存每个剧本
+    const fileNames = [];
+    for (const script of scripts) {
+      // 清理Markdown标签
+      const cleanScript = script
+        .replace(/```.*?\n/sg, '')   // 移除代码块
+        .replace(/\n{3,}/g, '\n\n') // 合并多余空行
+        .replace(/```/g, '') // 移除残留的代码块标记
+        .trim(); // 移除前后空白
+
+      // 生成唯一文件名
+      const timestamp = Date.now() + '-' + Math.floor(Math.random() * 1000);
+      const fileName = `${timestamp}.md`;
+      const filePath = path.join(SCRIPT_DIR, fileName);
+      
+      await fs.promises.writeFile(filePath, cleanScript);
+      fileNames.push(fileName);
+    }
+
+    res.json({ 
+      status: 'success',
+      files: fileNames
+    });
+  } catch (error) {
+    if (error.message === 'AbortError') {
+      console.log('请求被用户中止');
+      return res.status(499).json({ error: '用户取消请求' });
+    }
+    console.error('生成失败:', error);
+    res.status(500).json({ 
+      error: '内容生成失败',
+      details: error.statusText 
+    });
+  }
 });
 
 app.get('/health', (req, res) => {
