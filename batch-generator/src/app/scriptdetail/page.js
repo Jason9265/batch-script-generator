@@ -1,15 +1,24 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import Image from 'next/image';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-export default function ScriptDetail() {
+export default function Page() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <ScriptDetailContent />
+        </Suspense>
+    );
+}
+
+function ScriptDetailContent() {
     const searchParams = useSearchParams();
     const [question, setQuestion] = useState('');
     const [analysis, setAnalysis] = useState('');
