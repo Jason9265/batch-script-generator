@@ -37,6 +37,9 @@ function ScriptDetailContent() {
                     {
                         responseType: 'text',
                         transformResponse: [(data) => data],
+                        headers: {
+                            'ngrok-skip-browser-warning': 'true'
+                        }
                     }
                 );
                 
@@ -70,6 +73,10 @@ function ScriptDetailContent() {
                 script: originalScript,
                 question,
                 audience
+            }, {
+                headers: {
+                    'ngrok-skip-browser-warning': 'true'
+                }
             });
             
             setAnalysis(response.data.analysis);

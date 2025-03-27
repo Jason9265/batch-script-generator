@@ -12,7 +12,10 @@ import { Slider } from '@/components/ui/slider';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL
+  baseURL: API_BASE_URL,
+  headers: {
+    'ngrok-skip-browser-warning': 'true'
+  }
 });
 
 export default function Home() {
@@ -171,10 +174,21 @@ export default function Home() {
 
     const fetchFiles = async () => {
         try {
-            const res = await apiClient.get('/api/scripts');
-            setFileList(res.data.files);
+            const res = await apiClient.get('/api/scripts', {
+                headers: {
+                    'ngrok-skip-browser-warning': 'true'
+                }
+            });
+            console.log('API response:', res.data);
+            if (res.data && Array.isArray(res.data.files)) {
+                setFileList(res.data.files);
+            } else {
+                console.error('API返回格式不符合预期:', res.data);
+                setFileList([]);
+            }
         } catch (error) {
             console.error('获取文件列表失败:', error);
+            setFileList([]);
         }
     };
 
